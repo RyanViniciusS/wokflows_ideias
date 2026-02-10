@@ -1,0 +1,40 @@
+-- =========================
+-- Table: workflow
+-- =========================
+CREATE TABLE workflow (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    createdAt TIMESTAMP NOT NULL DEFAULT NOW(),
+    updatedAt TIMESTAMP NOT NULL DEFAULT NOW(),
+    userId VARCHAR(50) NOT NULL,
+    accountId VARCHAR(50)
+);
+
+-- =========================
+-- Table: node
+-- =========================
+CREATE TABLE node (
+    id VARCHAR(50) PRIMARY KEY,
+    workflowId VARCHAR(50) NOT NULL REFERENCES workflow(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    position JSON NOT NULL,
+    data JSON DEFAULT '{}'::json,
+    createdAt TIMESTAMP NOT NULL DEFAULT NOW(),
+    updatedAt TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- =========================
+-- Table: connection
+-- =========================
+CREATE TABLE connection (
+    id VARCHAR(50) PRIMARY KEY,
+    workflowId VARCHAR(50) NOT NULL REFERENCES workflow(id) ON DELETE CASCADE,
+    fromNodeId VARCHAR(50) NOT NULL REFERENCES node(id) ON DELETE CASCADE,
+    toNodeId VARCHAR(50) NOT NULL REFERENCES node(id) ON DELETE CASCADE,
+    fromOutput VARCHAR(50) DEFAULT 'main',
+    toInput VARCHAR(50) DEFAULT 'main',
+    createdAt TIMESTAMP NOT NULL DEFAULT NOW(),
+    updatedAt TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT connection_unique UNIQUE (fromNodeId, toNodeId, fromOutput, toInput)
+);
