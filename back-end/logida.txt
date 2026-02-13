@@ -1,0 +1,144 @@
+-- ============================================
+-- WORKFLOW ENGINE - MVP ARCHITECTURE NOTES
+-- ============================================
+
+-- =========================================================
+-- 1️⃣ ROTA: TEST NODE (não salva no banco)
+-- =========================================================
+-- Objetivo:
+-- Testar configuração de um node HTTP antes de salvar.
+-- Executa apenas 1 node.
+-- Não consulta workflow.
+-- Não usa conexões.
+-- Não cria execução completa.
+
+-- Fluxo:
+-- Front envia config temporária →
+-- Backend executa fetch →
+-- Backend retorna response →
+-- Front mostra preview dos dados
+
+
+-- =========================================================
+-- 2️⃣ ROTA: RUN WORKFLOW (execução real)
+-- =========================================================
+-- Objetivo:
+-- Executar workflow salvo no banco.
+-- Processar node por node.
+-- Criar contexto compartilhado.
+
+-- Fluxo:
+-- Recebe workflow_id →
+-- Consulta workflow →
+-- Consulta nodes →
+-- Consulta connections →
+-- Executa engine (while loop) →
+-- Retorna contexto final
+
+
+-- =========================================================
+-- 3️⃣ ESTRUTURA BASE DO BANCO
+-- =========================================================
+
+-- =========================
+-- TABLE: workflow
+-- =========================
+CREATE TABLE workflow (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    user_id VARCHAR(50) NOT NULL,
+    account_id VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- =========================
+-- TABLE: node
+-- =========================
+CREATE TABLE node (
+    id VARCHAR(50) PRIMARY KEY,
+    workflow_id VARCHAR(50) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL, -- HTTP | TEXT | CONDITION | etc
+    data JSON NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workflow_id) REFERENCES workflow(id)
+);
+
+
+-- =========================
+-- TABLE: connection
+-- =========================
+CREATE TABLE connection (
+    id VARCHAR(50) PRIMARY KEY,
+    workflow_id VARCHAR(50) NOT NULL,
+    from_node_id VARCHAR(50) NOT NULL,
+    to_node_id VARCHAR(50) NOT NULL,
+    from_output VARCHAR(50) DEFAULT 'main',
+    to_input VARCHAR(50) DEFAULT 'main',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workflow_id) REFERENCES workflow(id)
+);
+
+
+-- =========================================================
+-- 4️⃣ LÓGICA DA ENGINE (RUN)
+-- =========================================================
+
+-- 1. Buscar workflow
+-- SELECT * FROM workflow WHERE id = :workflow_id;
+
+-- 2. Buscar nodes
+-- SELECT * FROM node WHERE workflow_id = :workflow_id;
+
+-- 3. Buscar connections
+-- SELECT * FROM connection WHERE workflow_id = :workflow_id;
+
+-- 4. Criar contexto vazio
+-- context = {}
+
+-- 5. Encontrar node inicial
+-- current_node = nodes.find(type = 'INITIAL')
+
+-- 6. Loop enquanto houver próximo node
+-- while (current_node) {
+
+--     CASE current_node.type
+
+--         WHEN 'HTTP' THEN
+--             Executar requisição HTTP
+--             Salvar dados no context
+
+--         WHEN 'TEXT' THEN
+--             Processar template
+--             Salvar no context
+
+--         WHEN 'CONDITION' THEN
+--             Avaliar condição
+--             Escolher próxima conexão
+
+--     END CASE
+
+--     Buscar próxima conexão
+--     current_node = próximo node
+
+-- }
+
+-- 7. Retornar context final
+
+
+-- =========================================================
+-- 5️⃣ OBSERVAÇÃO IMPORTANTE
+-- =========================================================
+-- TEST route:
+-- NÃO usa banco
+-- NÃO usa workflow
+-- NÃO executa engine
+
+-- RUN route:
+-- Usa banco
+-- Executa engine completa
+-- Atualiza contexto global
