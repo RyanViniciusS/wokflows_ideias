@@ -1,71 +1,33 @@
--- =========================
--- Table: workflow
--- =========================
-| ID     | Name                | User ID | Account ID | CreatedAt        | UpdatedAt        |
-| ------ | ------------------ | ------- | ---------- | ---------------- | ---------------- |
-| wf_001 | Workflow de Teste 1 | user_01 | acc_01     | 2026-02-10 10:00 | 2026-02-10 10:00 |
+# ============================================
+# PROJECT CONTEXT - WORKFLOW ENGINE (MVP)
+# ============================================
 
--- =========================
--- Table: node
--- =========================
-| ID       | Workflow ID | Name                       | Type   | Position          | Data                                                                                                                                 | CreatedAt        | UpdatedAt        |
-| -------- | ----------- | -------------------------- | ------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------- | ---------------- |
-| node_001 | wf_001      | Receber Pergunta Usuário   | input  | {"x":100,"y":100} | { "body": "{{user.question}}", "method": "POST", "endpoint": "[http://localhost:3000/ask](http://localhost:3000/ask)" }              | 2026-02-10 10:01 | 2026-02-10 10:01 |
-| node_002 | wf_001      | Buscar Previsão do Tempo   | action | {"x":300,"y":100} | { "api": "[http://api.weather.com](http://api.weather.com)", "params": {"city": "{{user.city}}"}, "method": "GET" }                  | 2026-02-10 10:02 | 2026-02-10 10:02 |
-| node_003 | wf_001      | Formatar Resposta          | action | {"x":500,"y":100} | { "template": "Olá {{user.name}}, a previsão do tempo em {{user.city}} é {{weather.temp}}°C" }                                       | 2026-02-10 10:03 | 2026-02-10 10:03 |
-| node_004 | wf_001      | Enviar Resposta ao Cliente | action | {"x":700,"y":100} | { "method": "POST", "endpoint": "[http://localhost:3000/respond](http://localhost:3000/respond)", "body": "{{formatted.response}}" } | 2026-02-10 10:04 | 2026-02-10 10:04 |
--- =========================
--- Table: connection
--- =========================
-| ID       | Workflow ID | From Node ID | To Node ID | From Output | To Input | CreatedAt        | UpdatedAt        |
-| -------- | ----------- | ------------ | ---------- | ----------- | -------- | ---------------- | ---------------- |
-| conn_001 | wf_001      | node_001     | node_002   | main        | main     | 2026-02-10 10:01 | 2026-02-10 10:01 |
-| conn_002 | wf_001      | node_002     | node_003   | main        | main     | 2026-02-10 10:02 | 2026-02-10 10:02 |
-| conn_003 | wf_001      | node_003     | node_004   | main        | main     | 2026-02-10 10:03 | 2026-02-10 10:03 | -- ============================================
--- WORKFLOW ENGINE - MVP ARCHITECTURE NOTES
--- ============================================
+## 🧠 Visão Geral
 
--- =========================================================
--- 1️⃣ ROTA: TEST NODE (não salva no banco)
--- =========================================================
--- Objetivo:
--- Testar configuração de um node HTTP antes de salvar.
--- Executa apenas 1 node.
--- Não consulta workflow.
--- Não usa conexões.
--- Não cria execução completa.
+Este projeto é um Workflow Engine Conversacional inspirado no modelo do Typebot.
 
--- Fluxo:
--- Front envia config temporária →
--- Backend executa fetch →
--- Backend retorna response →
--- Front mostra preview dos dados
+Ele permite:
+
+- Criar workflows compostos por nodes conectados
+- Executar fluxos passo a passo
+- Persistir estado da execução
+- Pausar execução aguardando input do usuário
+- Retomar execução posteriormente
+
+A engine NÃO executa tudo de forma síncrona.
+Ela executa até encontrar um ponto de espera (INPUT) e salva o estado.
+
+Arquitetura orientada a execução stateful.
 
 
--- =========================================================
--- 2️⃣ ROTA: RUN WORKFLOW (execução real)
--- =========================================================
--- Objetivo:
--- Executar workflow salvo no banco.
--- Processar node por node.
--- Criar contexto compartilhado.
+# ============================================
+# 🗄️ ESTRUTURA DO BANCO
+# ============================================
 
--- Fluxo:
--- Recebe workflow_id →
--- Consulta workflow →
--- Consulta nodes →
--- Consulta connections →
--- Executa engine (while loop) →
--- Retorna contexto final
+## TABLE: workflow
 
+Representa um fluxo completo.
 
--- =========================================================
--- 3️⃣ ESTRUTURA BASE DO BANCO
--- =========================================================
-
--- =========================
--- TABLE: workflow
--- =========================
 CREATE TABLE workflow (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -76,14 +38,23 @@ CREATE TABLE workflow (
 );
 
 
--- =========================
--- TABLE: node
--- =========================
+## TABLE: node
+
+Representa um bloco dentro do workflow.
+
+Tipos possíveis:
+- START
+- TEXT
+- HTTP
+- CONDITION
+- INPUT
+- ACTION
+
 CREATE TABLE node (
     id VARCHAR(50) PRIMARY KEY,
     workflow_id VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    type VARCHAR(50) NOT NULL, -- HTTP | TEXT | CONDITION | etc
+    type VARCHAR(50) NOT NULL,
     data JSON NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -91,9 +62,10 @@ CREATE TABLE node (
 );
 
 
--- =========================
--- TABLE: connection
--- =========================
+## TABLE: connection
+
+Define a ligação entre nodes.
+
 CREATE TABLE connection (
     id VARCHAR(50) PRIMARY KEY,
     workflow_id VARCHAR(50) NOT NULL,
@@ -107,61 +79,165 @@ CREATE TABLE connection (
 );
 
 
--- =========================================================
--- 4️⃣ LÓGICA DA ENGINE (RUN)
--- =========================================================
+## TABLE: execution
 
--- 1. Buscar workflow
--- SELECT * FROM workflow WHERE id = :workflow_id;
+Representa uma execução ativa ou finalizada de um workflow.
 
--- 2. Buscar nodes
--- SELECT * FROM node WHERE workflow_id = :workflow_id;
-
--- 3. Buscar connections
--- SELECT * FROM connection WHERE workflow_id = :workflow_id;
-
--- 4. Criar contexto vazio
--- context = {}
-
--- 5. Encontrar node inicial
--- current_node = nodes.find(type = 'INITIAL')
-
--- 6. Loop enquanto houver próximo node
--- while (current_node) {
-
---     CASE current_node.type
-
---         WHEN 'HTTP' THEN
---             Executar requisição HTTP
---             Salvar dados no context
-
---         WHEN 'TEXT' THEN
---             Processar template
---             Salvar no context
-
---         WHEN 'CONDITION' THEN
---             Avaliar condição
---             Escolher próxima conexão
-
---     END CASE
-
---     Buscar próxima conexão
---     current_node = próximo node
-
--- }
-
--- 7. Retornar context final
+CREATE TABLE execution (
+    id VARCHAR(50) PRIMARY KEY,
+    workflow_id VARCHAR(50) NOT NULL,
+    current_node_id VARCHAR(50),
+    context JSON,
+    status VARCHAR(20) DEFAULT 'running', -- running | waiting | finished
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workflow_id) REFERENCES workflow(id)
+);
 
 
--- =========================================================
--- 5️⃣ OBSERVAÇÃO IMPORTANTE
--- =========================================================
--- TEST route:
--- NÃO usa banco
--- NÃO usa workflow
--- NÃO executa engine
+# ============================================
+# 🚀 ROTAS DA API
+# ============================================
 
--- RUN route:
--- Usa banco
--- Executa engine completa
--- Atualiza contexto global 
+## 1️⃣ POST /node/test
+
+Objetivo:
+Executar um node isolado antes de salvar.
+
+Regras:
+- Não consulta workflow
+- Não usa conexões
+- Não cria execution
+- Apenas executa a configuração enviada
+
+Fluxo:
+Front envia config →
+Backend executa →
+Retorna preview
+
+
+## 2️⃣ POST /workflow/:id/start
+
+Objetivo:
+Iniciar uma execução real.
+
+Fluxo:
+
+1. Buscar workflow
+2. Buscar nodes
+3. Buscar connections
+4. Criar execution
+5. Encontrar node START
+6. Executar engine até encontrar:
+   - INPUT
+   - Ou finalizar fluxo
+7. Atualizar execution
+8. Retornar resposta ao cliente
+
+
+## 3️⃣ POST /execution/:id/continue
+
+Objetivo:
+Continuar execução pausada.
+
+Body esperado:
+{
+  "answer": "resposta do usuário"
+}
+
+Fluxo:
+
+1. Buscar execution
+2. Recuperar context
+3. Recuperar current_node
+4. Salvar resposta no context
+5. Continuar engine a partir do ponto salvo
+6. Executar até:
+   - Novo INPUT
+   - Ou finalização
+7. Atualizar execution
+8. Retornar próxima mensagem
+
+
+# ============================================
+# ⚙️ ENGINE - LÓGICA DE EXECUÇÃO
+# ============================================
+
+A engine executa incrementalmente.
+
+Pseudo fluxo:
+
+function runUntilWait(node, context):
+
+    while node exists:
+
+        switch(node.type):
+
+            case "TEXT":
+                process template
+                salvar no context
+
+            case "HTTP":
+                executar requisição
+                salvar response no context
+
+            case "CONDITION":
+                avaliar regra
+                escolher conexão de saída
+
+            case "INPUT":
+                salvar execution
+                retornar WAITING
+
+        node = próximo node conectado
+
+    retornar FINISHED
+
+
+A execução sempre termina em:
+
+- WAITING (aguardando usuário)
+- FINISHED (fluxo concluído)
+
+
+# ============================================
+# 📦 CONTEXTO GLOBAL
+# ============================================
+
+O context JSON armazena:
+
+{
+  "user": {},
+  "responses": {},
+  "external": {},
+  "variables": {}
+}
+
+Ele é compartilhado entre todos os nodes da execução.
+
+
+# ============================================
+# 🎯 OBJETIVO DO MVP
+# ============================================
+
+Criar um motor de orquestração conversacional:
+
+- Stateful
+- Persistido
+- Modular
+- Extensível para SaaS
+- Inspirado no modelo do Typebot
+- Preparado para escalar com workers e filas
+
+
+# ============================================
+# 🔮 FUTURA EVOLUÇÃO
+# ============================================
+
+- WebSocket para execução em tempo real
+- Redis para cache de execução
+- Worker queue para execução assíncrona
+- Execução paralela de branches
+- Logs detalhados por execução
+- Versionamento de workflow
+- Engine baseada em eventos
