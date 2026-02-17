@@ -1,0 +1,167 @@
+-- =========================
+-- Table: workflow
+-- =========================
+| ID     | Name                | User ID | Account ID | CreatedAt        | UpdatedAt        |
+| ------ | ------------------ | ------- | ---------- | ---------------- | ---------------- |
+| wf_001 | Workflow de Teste 1 | user_01 | acc_01     | 2026-02-10 10:00 | 2026-02-10 10:00 |
+
+-- =========================
+-- Table: node
+-- =========================
+| ID       | Workflow ID | Name                       | Type   | Position          | Data                                                                                                                                 | CreatedAt        | UpdatedAt        |
+| -------- | ----------- | -------------------------- | ------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------- | ---------------- |
+| node_001 | wf_001      | Receber Pergunta Usuário   | input  | {"x":100,"y":100} | { "body": "{{user.question}}", "method": "POST", "endpoint": "[http://localhost:3000/ask](http://localhost:3000/ask)" }              | 2026-02-10 10:01 | 2026-02-10 10:01 |
+| node_002 | wf_001      | Buscar Previsão do Tempo   | action | {"x":300,"y":100} | { "api": "[http://api.weather.com](http://api.weather.com)", "params": {"city": "{{user.city}}"}, "method": "GET" }                  | 2026-02-10 10:02 | 2026-02-10 10:02 |
+| node_003 | wf_001      | Formatar Resposta          | action | {"x":500,"y":100} | { "template": "Olá {{user.name}}, a previsão do tempo em {{user.city}} é {{weather.temp}}°C" }                                       | 2026-02-10 10:03 | 2026-02-10 10:03 |
+| node_004 | wf_001      | Enviar Resposta ao Cliente | action | {"x":700,"y":100} | { "method": "POST", "endpoint": "[http://localhost:3000/respond](http://localhost:3000/respond)", "body": "{{formatted.response}}" } | 2026-02-10 10:04 | 2026-02-10 10:04 |
+-- =========================
+-- Table: connection
+-- =========================
+| ID       | Workflow ID | From Node ID | To Node ID | From Output | To Input | CreatedAt        | UpdatedAt        |
+| -------- | ----------- | ------------ | ---------- | ----------- | -------- | ---------------- | ---------------- |
+| conn_001 | wf_001      | node_001     | node_002   | main        | main     | 2026-02-10 10:01 | 2026-02-10 10:01 |
+| conn_002 | wf_001      | node_002     | node_003   | main        | main     | 2026-02-10 10:02 | 2026-02-10 10:02 |
+| conn_003 | wf_001      | node_003     | node_004   | main        | main     | 2026-02-10 10:03 | 2026-02-10 10:03 | -- ============================================
+-- WORKFLOW ENGINE - MVP ARCHITECTURE NOTES
+-- ============================================
+
+-- =========================================================
+-- 1️⃣ ROTA: TEST NODE (não salva no banco)
+-- =========================================================
+-- Objetivo:
+-- Testar configuração de um node HTTP antes de salvar.
+-- Executa apenas 1 node.
+-- Não consulta workflow.
+-- Não usa conexões.
+-- Não cria execução completa.
+
+-- Fluxo:
+-- Front envia config temporária →
+-- Backend executa fetch →
+-- Backend retorna response →
+-- Front mostra preview dos dados
+
+
+-- =========================================================
+-- 2️⃣ ROTA: RUN WORKFLOW (execução real)
+-- =========================================================
+-- Objetivo:
+-- Executar workflow salvo no banco.
+-- Processar node por node.
+-- Criar contexto compartilhado.
+
+-- Fluxo:
+-- Recebe workflow_id →
+-- Consulta workflow →
+-- Consulta nodes →
+-- Consulta connections →
+-- Executa engine (while loop) →
+-- Retorna contexto final
+
+
+-- =========================================================
+-- 3️⃣ ESTRUTURA BASE DO BANCO
+-- =========================================================
+
+-- =========================
+-- TABLE: workflow
+-- =========================
+CREATE TABLE workflow (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    user_id VARCHAR(50) NOT NULL,
+    account_id VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- =========================
+-- TABLE: node
+-- =========================
+CREATE TABLE node (
+    id VARCHAR(50) PRIMARY KEY,
+    workflow_id VARCHAR(50) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL, -- HTTP | TEXT | CONDITION | etc
+    data JSON NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workflow_id) REFERENCES workflow(id)
+);
+
+
+-- =========================
+-- TABLE: connection
+-- =========================
+CREATE TABLE connection (
+    id VARCHAR(50) PRIMARY KEY,
+    workflow_id VARCHAR(50) NOT NULL,
+    from_node_id VARCHAR(50) NOT NULL,
+    to_node_id VARCHAR(50) NOT NULL,
+    from_output VARCHAR(50) DEFAULT 'main',
+    to_input VARCHAR(50) DEFAULT 'main',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workflow_id) REFERENCES workflow(id)
+);
+
+
+-- =========================================================
+-- 4️⃣ LÓGICA DA ENGINE (RUN)
+-- =========================================================
+
+-- 1. Buscar workflow
+-- SELECT * FROM workflow WHERE id = :workflow_id;
+
+-- 2. Buscar nodes
+-- SELECT * FROM node WHERE workflow_id = :workflow_id;
+
+-- 3. Buscar connections
+-- SELECT * FROM connection WHERE workflow_id = :workflow_id;
+
+-- 4. Criar contexto vazio
+-- context = {}
+
+-- 5. Encontrar node inicial
+-- current_node = nodes.find(type = 'INITIAL')
+
+-- 6. Loop enquanto houver próximo node
+-- while (current_node) {
+
+--     CASE current_node.type
+
+--         WHEN 'HTTP' THEN
+--             Executar requisição HTTP
+--             Salvar dados no context
+
+--         WHEN 'TEXT' THEN
+--             Processar template
+--             Salvar no context
+
+--         WHEN 'CONDITION' THEN
+--             Avaliar condição
+--             Escolher próxima conexão
+
+--     END CASE
+
+--     Buscar próxima conexão
+--     current_node = próximo node
+
+-- }
+
+-- 7. Retornar context final
+
+
+-- =========================================================
+-- 5️⃣ OBSERVAÇÃO IMPORTANTE
+-- =========================================================
+-- TEST route:
+-- NÃO usa banco
+-- NÃO usa workflow
+-- NÃO executa engine
+
+-- RUN route:
+-- Usa banco
+-- Executa engine completa
+-- Atualiza contexto global 
